@@ -1,15 +1,16 @@
 package be.nabu.utils.codec.impl;
 
+import java.io.IOException;
 import java.util.Arrays;
 
-import be.nabu.utils.codec.api.ByteTranscoder;
+import be.nabu.utils.codec.api.Transcoder;
 import be.nabu.utils.io.IOUtils;
-import be.nabu.utils.io.api.IORuntimeException;
-import be.nabu.utils.io.api.ReadableByteContainer;
-import be.nabu.utils.io.api.WritableByteContainer;
-import be.nabu.utils.io.impl.DynamicByteContainer;
+import be.nabu.utils.io.api.ByteBuffer;
+import be.nabu.utils.io.api.ReadableContainer;
+import be.nabu.utils.io.api.WritableContainer;
+import be.nabu.utils.io.buffers.bytes.DynamicByteBuffer;
 
-public class Base64Decoder implements ByteTranscoder {
+public class Base64Decoder implements Transcoder<ByteBuffer> {
 
 	static final byte [] codes = new byte [256]; static {
 		Arrays.fill(codes, (byte) -1);
@@ -17,7 +18,7 @@ public class Base64Decoder implements ByteTranscoder {
 			codes[Base64Encoder.codes[i]] = (byte) i;
 	}
 	
-	private DynamicByteContainer outputBuffer = new DynamicByteContainer();
+	private DynamicByteBuffer outputBuffer = new DynamicByteBuffer();
 	
 	private byte [] buffer = new byte[4];
 	
@@ -27,7 +28,7 @@ public class Base64Decoder implements ByteTranscoder {
 	
 	private byte [] decoded = new byte[3];
 	
-	private void decode(WritableByteContainer out) {
+	private void decode(WritableContainer<ByteBuffer> out) throws IOException {
 		if (buffer[3] == '=')
 			offset--;
 		if (buffer[2] == '=')
@@ -44,9 +45,9 @@ public class Base64Decoder implements ByteTranscoder {
 			case 3: decoded[1] = decodeSecond();
 			case 2: decoded[0] = decodeFirst(); 
 		}
-		int written = out.write(decoded, 0, offset - 1);
+		int written = (int) out.write(IOUtils.wrap(decoded, 0, offset - 1, true));
 		if (written < offset)
-			outputBuffer.write(decoded, written, offset - 1 - written);
+			outputBuffer.write(IOUtils.wrap(decoded, written, offset - 1 - written, true));
 	}
 	
 	private byte decodeFirst() {
@@ -62,9 +63,9 @@ public class Base64Decoder implements ByteTranscoder {
 	}
 	
 	@Override
-	public void transcode(ReadableByteContainer in, WritableByteContainer out) {
-		if (outputBuffer.remainingData() == IOUtils.copy(outputBuffer, out)) {
-			while (outputBuffer.remainingData() == 0 && in.read(readBuffer) == 1) {
+	public void transcode(ReadableContainer<ByteBuffer> in, WritableContainer<ByteBuffer> out) throws IOException {
+		if (outputBuffer.remainingData() == IOUtils.copyBytes(outputBuffer, out)) {
+			while (outputBuffer.remainingData() == 0 && in.read(IOUtils.wrap(readBuffer, false)) == 1) {
 				int character = readBuffer[0] & 0xff;
 				if (character == '\r' || character == '\n')
 					continue;
@@ -80,13 +81,13 @@ public class Base64Decoder implements ByteTranscoder {
 	}
 
 	@Override
-	public void flush(WritableByteContainer out) {
+	public void flush(WritableContainer<ByteBuffer> out) throws IOException {
 		// the input should've been padded
 		if (offset != 0)
-			throw new IORuntimeException("Not enough bytes in the input to finish the decoding, missing " + (4 - offset) + " byte(s)");
-		IOUtils.copy(outputBuffer, out);
+			throw new IOException("Not enough bytes in the input to finish the decoding, missing " + (4 - offset) + " byte(s)");
+		IOUtils.copyBytes(outputBuffer, out);
 		if (outputBuffer.remainingData() > 0)
-			throw new IORuntimeException("Not enough space in the target to finish the decoding");
+			throw new IOException("Not enough space in the target to finish the decoding");
 	}
 
 }

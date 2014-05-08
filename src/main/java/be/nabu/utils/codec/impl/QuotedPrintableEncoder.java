@@ -1,13 +1,14 @@
 package be.nabu.utils.codec.impl;
 
-import be.nabu.utils.codec.api.ByteTranscoder;
-import be.nabu.utils.io.IOUtils;
-import be.nabu.utils.io.api.IORuntimeException;
-import be.nabu.utils.io.api.ReadableByteContainer;
-import be.nabu.utils.io.api.WritableByteContainer;
-import be.nabu.utils.io.impl.DynamicByteContainer;
+import java.io.IOException;
 
-public class QuotedPrintableEncoder implements ByteTranscoder {
+import be.nabu.utils.codec.api.Transcoder;
+import be.nabu.utils.io.IOUtils;
+import be.nabu.utils.io.api.ByteBuffer;
+import be.nabu.utils.io.api.ReadableContainer;
+import be.nabu.utils.io.api.WritableContainer;
+
+public class QuotedPrintableEncoder implements Transcoder<ByteBuffer> {
 
 	static final char [] codes = new char [] {
 		'0',
@@ -30,7 +31,7 @@ public class QuotedPrintableEncoder implements ByteTranscoder {
 	
 	private byte[] buffer = new byte[1];
 	
-	private DynamicByteContainer byteContainer = new DynamicByteContainer();
+	private ByteBuffer byteContainer = IOUtils.newByteBuffer();
 	
 	/**
 	 * Keeps track of whether the we have encoded anything
@@ -64,26 +65,26 @@ public class QuotedPrintableEncoder implements ByteTranscoder {
 	}
 	
 	@Override
-	public void flush(WritableByteContainer out) {
-		IOUtils.copy(byteContainer, out);
+	public void flush(WritableContainer<ByteBuffer> out) throws IOException {
+		out.write(byteContainer);
 		writeSpaces(out, true);
 		if (byteContainer.remainingData() > 0)
-			throw new IORuntimeException("Could not flush all the data to the output");
+			throw new IOException("Could not flush all the data to the output");
 	}
 	
-	private void writeSoftCRLF(WritableByteContainer out) {
+	private void writeSoftCRLF(WritableContainer<ByteBuffer> out) throws IOException {
 		byteCount = 0;
 		write(out, '=', false);
 		writeCRLF(out);
 	}
 	
-	private void writeCRLF(WritableByteContainer out) {
+	private void writeCRLF(WritableContainer<ByteBuffer> out) throws IOException {
 		write(out, '\r', false);
 		write(out, '\n', false);
 		byteCount = 0;
 	}
 	
-	private void writeSpaces(WritableByteContainer out, boolean encode) {
+	private void writeSpaces(WritableContainer<ByteBuffer> out, boolean encode) throws IOException {
 		for (int i = 0; i < spaces; i++) {
 			if (encode)
 				write(out, ' ', true);
@@ -93,7 +94,7 @@ public class QuotedPrintableEncoder implements ByteTranscoder {
 		spaces = 0;
 	}
 	
-	private void write(WritableByteContainer out, int character, boolean encode) {
+	private void write(WritableContainer<ByteBuffer> out, int character, boolean encode) throws IOException {
 		if (encode) {
 			hasEncoded = true;
 			int [] encoded = encode(character);
@@ -103,7 +104,7 @@ public class QuotedPrintableEncoder implements ByteTranscoder {
 				write(out, encodedCharacter, false);
 		}
 		else {
-			if (byteContainer.remainingData() > 0 || out.write(new byte[] { (byte) character }) == 0)
+			if (byteContainer.remainingData() > 0 || out.write(IOUtils.wrap(new byte[] { (byte) character }, true)) == 0)
 				byteContainer.write(new byte [] { (byte) character });
 			byteCount++;
 			// if we have reached the line count, add a soft line break
@@ -125,15 +126,9 @@ public class QuotedPrintableEncoder implements ByteTranscoder {
 	}
 
 	@Override
-	public void transcode(ReadableByteContainer in, WritableByteContainer out) {
-		// first try to write any remaining data that was not written in the previous run
-		if (byteContainer.remainingData() > 0) {
-			byte [] remainingData = IOUtils.toBytes(byteContainer);
-			int written = out.write(remainingData);
-			byteContainer.write(remainingData, written, remainingData.length - written);
-		}
+	public void transcode(ReadableContainer<ByteBuffer> in, WritableContainer<ByteBuffer> out) throws IOException {
 		// only continue if we were able to flush anything that was still in the container
-		while (byteContainer.remainingData() == 0 && in.read(buffer) > 0) {
+		while (byteContainer.remainingData() == out.write(byteContainer) && in.read(IOUtils.wrap(buffer, false)) > 0) {
 			int character = buffer[0] & 0xff;
 			
 			if (spaces > 0 && character != ' ') {

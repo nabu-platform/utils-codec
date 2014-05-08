@@ -1,21 +1,21 @@
 package be.nabu.utils.codec.impl;
 
+import java.io.IOException;
 import java.util.zip.DataFormatException;
 import java.util.zip.Inflater;
 
-import be.nabu.utils.codec.api.ByteTranscoder;
+import be.nabu.utils.codec.api.Transcoder;
 import be.nabu.utils.io.IOUtils;
-import be.nabu.utils.io.api.IORuntimeException;
-import be.nabu.utils.io.api.ReadableByteContainer;
-import be.nabu.utils.io.api.WritableByteContainer;
-import be.nabu.utils.io.impl.DynamicByteContainer;
+import be.nabu.utils.io.api.ByteBuffer;
+import be.nabu.utils.io.api.ReadableContainer;
+import be.nabu.utils.io.api.WritableContainer;
 
 /**
  * The inflater transcoder can be flushed multiple times as it has no inherent remaining state
  */
-public class InflateTranscoder implements ByteTranscoder {
+public class InflateTranscoder implements Transcoder<ByteBuffer> {
 
-	DynamicByteContainer buffer = new DynamicByteContainer();
+	ByteBuffer buffer = IOUtils.newByteBuffer();
 	
 	Inflater inflater;
 	
@@ -32,9 +32,9 @@ public class InflateTranscoder implements ByteTranscoder {
 	}
 	
 	@Override
-	public void transcode(ReadableByteContainer in, WritableByteContainer out) {
+	public void transcode(ReadableContainer<ByteBuffer> in, WritableContainer<ByteBuffer> out) throws IOException {
 		// flush any buffered data to out
-		if (buffer.remainingData() == IOUtils.copy(buffer, out) && !inflater.finished()) {
+		if (buffer.remainingData() == out.write(buffer) && !inflater.finished()) {
 			try {
 				int read = 0;
 				while ((read = inflater.inflate(inflateBuffer)) >= 0) {
@@ -48,7 +48,7 @@ public class InflateTranscoder implements ByteTranscoder {
 							break;
 						}
 						else if (inflater.needsInput()) {
-							this.read = in.read(readBuffer, inflater.getRemaining(), readBuffer.length - inflater.getRemaining());
+							this.read = (int) in.read(IOUtils.wrap(readBuffer, inflater.getRemaining(), readBuffer.length - inflater.getRemaining(), false));
 							if (this.read == -1) {
 								flush(out);
 								break;
@@ -62,7 +62,7 @@ public class InflateTranscoder implements ByteTranscoder {
 							throw new TranscoderRuntimeException("Inflater can not provide data");
 					}
 					else {
-						int written = out.write(inflateBuffer, 0, read);
+						int written = (int) out.write(IOUtils.wrap(inflateBuffer, 0, read, true));
 						if (written != read) {
 							buffer.write(inflateBuffer, written, read - written);
 							break;
@@ -71,19 +71,19 @@ public class InflateTranscoder implements ByteTranscoder {
 				}
 			}
 			catch (DataFormatException e) {
-				throw new IORuntimeException(e);
+				throw new IOException(e);
 			}
 		}
 	}
 	
-	void finish(ReadableByteContainer in, WritableByteContainer out) {
+	void finish(ReadableContainer<ByteBuffer> in, WritableContainer<ByteBuffer> out) throws IOException {
 		flush(out);
 	}
 
 	@Override
-	public void flush(WritableByteContainer out) {
-		if (buffer.remainingData() != IOUtils.copy(buffer, out))
-			throw new IORuntimeException("Could not copy all the bytes to the output, there are " + buffer.remainingData() + " bytes remaining");
+	public void flush(WritableContainer<ByteBuffer> out) throws IOException {
+		if (buffer.remainingData() != out.write(buffer))
+			throw new IOException("Could not copy all the bytes to the output, there are " + buffer.remainingData() + " bytes remaining");
 	}
 
 }

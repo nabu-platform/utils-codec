@@ -1,16 +1,18 @@
 package be.nabu.utils.codec.impl;
 
-import be.nabu.utils.codec.api.ByteTranscoder;
+import java.io.IOException;
+
+import be.nabu.utils.codec.api.Transcoder;
 import be.nabu.utils.io.IOUtils;
-import be.nabu.utils.io.api.IORuntimeException;
-import be.nabu.utils.io.api.ReadableByteContainer;
-import be.nabu.utils.io.api.WritableByteContainer;
-import be.nabu.utils.io.impl.DynamicByteContainer;
+import be.nabu.utils.io.api.ByteBuffer;
+import be.nabu.utils.io.api.ReadableContainer;
+import be.nabu.utils.io.api.WritableContainer;
+import be.nabu.utils.io.buffers.bytes.DynamicByteBuffer;
 
 /**
  * need support for line length
  */
-public class Base64Encoder implements ByteTranscoder {
+public class Base64Encoder implements Transcoder<ByteBuffer> {
 
 	static final char [] codes = new char [] {
 	//	 0	 1	 2	 3	 4	 5	 6	 7
@@ -24,7 +26,7 @@ public class Base64Encoder implements ByteTranscoder {
 		'4','5','6','7','8','9','+','/' 	// 7
 	};
 	
-	private DynamicByteContainer outputBuffer = new DynamicByteContainer();
+	private DynamicByteBuffer outputBuffer = new DynamicByteBuffer();
 	
 	/**
 	 * Keep track of the bytes we read
@@ -58,11 +60,11 @@ public class Base64Encoder implements ByteTranscoder {
 	private int lastRead = 0;
 	
 	@Override
-	public void transcode(ReadableByteContainer in, WritableByteContainer out) {
+	public void transcode(ReadableContainer<ByteBuffer> in, WritableContainer<ByteBuffer> out) throws IOException {
 		// flush buffer (if any)
-		if (outputBuffer.remainingData() == IOUtils.copy(outputBuffer, out)) {
+		if (outputBuffer.remainingData() == IOUtils.copyBytes(outputBuffer, out)) {
 			// continue reading where you left off...
-			while ((read = in.read(bytes, lastRead, 3 - lastRead)) == 3 - lastRead) {
+			while ((read = (int) in.read(IOUtils.wrap(bytes, lastRead, 3 - lastRead, false))) == 3 - lastRead) {
 				encode(bytes, 0, 3);
 				write(out);
 				// set lastRead to 0 so we don't assume something is in the buffer if there isn't
@@ -76,20 +78,20 @@ public class Base64Encoder implements ByteTranscoder {
 		}
 	}
 	
-	private void write(WritableByteContainer out) {
+	private void write(WritableContainer<ByteBuffer> out) throws IOException {
 		if (byteCount + 4 > bytesPerLine) {
 			int breakPoint = bytesPerLine - byteCount;
 			System.arraycopy(encoded, 0, encodedWithLineBreak, 0, breakPoint);
 			encodedWithLineBreak[breakPoint] = '\r';
 			encodedWithLineBreak[breakPoint + 1] = '\n';
 			System.arraycopy(encoded, breakPoint, encodedWithLineBreak, breakPoint + 2, 4 - breakPoint);
-			int written = out.write(encodedWithLineBreak, 0, 6);
+			int written = (int) out.write(IOUtils.wrap(encodedWithLineBreak, 0, 6, true));
 			if (written < 6)
 				outputBuffer.write(encoded, written, 6 - written);
 			byteCount = 4 - breakPoint;
 		}
 		else {
-			int written = out.write(encoded, 0, 4);
+			int written = (int) out.write(IOUtils.wrap(encoded, 0, 4, true));
 			if (written < 4)
 				outputBuffer.write(encoded, written, 4 - written);
 			byteCount += 4;
@@ -133,17 +135,17 @@ public class Base64Encoder implements ByteTranscoder {
 	}
 
 	@Override
-	public void flush(WritableByteContainer out) {
+	public void flush(WritableContainer<ByteBuffer> out) throws IOException {
 		// write remaining in outputbuffer (if any)
-		IOUtils.copy(outputBuffer, out);
+		IOUtils.copyBytes(outputBuffer, out);
 		if (outputBuffer.remainingData() > 0)
-			throw new IORuntimeException("Could not flush the contents to the output");
+			throw new IOException("Could not flush the contents to the output");
 		// write remaining in read array (if any)
 		if (lastRead < 3 && lastRead > 0) {
 			encode(bytes, 0, lastRead);
 			write(out);
 			if (outputBuffer.remainingData() > 0)
-				throw new IORuntimeException("Could not flush the contents to the output");
+				throw new IOException("Could not flush the contents to the output");
 			// make sure it is flushed only once
 			lastRead = 0;
 		}

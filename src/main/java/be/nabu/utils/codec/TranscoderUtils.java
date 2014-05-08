@@ -1,34 +1,47 @@
 package be.nabu.utils.codec;
 
-import be.nabu.utils.codec.api.ByteTranscoder;
+import java.io.IOException;
+
+import be.nabu.utils.codec.api.Transcoder;
 import be.nabu.utils.codec.impl.TranscodedReadableByteContainer;
 import be.nabu.utils.codec.impl.TranscodedWritableByteContainer;
 import be.nabu.utils.io.IOUtils;
-import be.nabu.utils.io.api.ByteContainer;
-import be.nabu.utils.io.api.ReadableByteContainer;
-import be.nabu.utils.io.api.WritableByteContainer;
+import be.nabu.utils.io.api.Buffer;
+import be.nabu.utils.io.api.ByteBuffer;
+import be.nabu.utils.io.api.CharBuffer;
+import be.nabu.utils.io.api.Container;
+import be.nabu.utils.io.api.ReadableContainer;
+import be.nabu.utils.io.api.WritableContainer;
 
 public class TranscoderUtils {
 	
-	public static WritableByteContainer wrapOutput(WritableByteContainer container, ByteTranscoder transcoder) {
-		 return new TranscodedWritableByteContainer(container, transcoder);
+	public static <T extends Buffer<T>> WritableContainer<T> wrapWritable(WritableContainer<T> container, Transcoder<T> transcoder) {
+		 return new TranscodedWritableByteContainer<T>(container, transcoder);
 	}
 	
-	public static ReadableByteContainer wrapInput(ReadableByteContainer container, ByteTranscoder transcoder) {
-		 return new TranscodedReadableByteContainer(container, transcoder);
+	public static <T extends Buffer<T>> ReadableContainer<T> wrapReadable(ReadableContainer<T> container, Transcoder<T> transcoder) {
+		 return new TranscodedReadableByteContainer<T>(container, transcoder);
 	}
 
 	/**
 	 * Please note that this method performs the transcoding in memory so only use it for small transcodings
+	 * @throws IOException 
 	 */
-	public static ReadableByteContainer transcode(ReadableByteContainer data, ByteTranscoder transcoder) {
-		ByteContainer container = IOUtils.newByteContainer();
+	public static <T extends Buffer<T>> ReadableContainer<T> transcode(ReadableContainer<T> data, Transcoder<T> transcoder, Container<T> container, T buffer) throws IOException {
 		container = IOUtils.wrap(
 			container,
-			TranscoderUtils.wrapOutput(container, transcoder)
+			TranscoderUtils.wrapWritable(container, transcoder)
 		);
-		IOUtils.copy(data, container);
+		IOUtils.copy(data, container, buffer);
 		container.flush();
 		return container;
+	}
+	
+	public static ReadableContainer<ByteBuffer> transcodeBytes(ReadableContainer<ByteBuffer> data, Transcoder<ByteBuffer> transcoder) throws IOException {
+		return transcode(data, transcoder, IOUtils.newByteBuffer(), IOUtils.newByteBuffer(4096, true));
+	}
+	
+	public static ReadableContainer<CharBuffer> transcodeChars(ReadableContainer<CharBuffer> data, Transcoder<CharBuffer> transcoder) throws IOException {
+		return transcode(data, transcoder, IOUtils.newCharBuffer(), IOUtils.newCharBuffer(4096, true));
 	}
 }

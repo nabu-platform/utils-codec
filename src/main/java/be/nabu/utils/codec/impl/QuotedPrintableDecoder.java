@@ -1,12 +1,14 @@
 package be.nabu.utils.codec.impl;
 
-import be.nabu.utils.codec.api.ByteTranscoder;
-import be.nabu.utils.io.IOUtils;
-import be.nabu.utils.io.api.ReadableByteContainer;
-import be.nabu.utils.io.api.WritableByteContainer;
-import be.nabu.utils.io.impl.DynamicByteContainer;
+import java.io.IOException;
 
-public class QuotedPrintableDecoder implements ByteTranscoder {
+import be.nabu.utils.codec.api.Transcoder;
+import be.nabu.utils.io.IOUtils;
+import be.nabu.utils.io.api.ByteBuffer;
+import be.nabu.utils.io.api.ReadableContainer;
+import be.nabu.utils.io.api.WritableContainer;
+
+public class QuotedPrintableDecoder implements Transcoder<ByteBuffer> {
 
 	static final byte [] codes = new byte[128]; static {
 		for (int i = 0; i < QuotedPrintableEncoder.codes.length; i++) {
@@ -14,7 +16,7 @@ public class QuotedPrintableDecoder implements ByteTranscoder {
 		}
 	}
 	
-	private DynamicByteContainer outputBuffer = new DynamicByteContainer();
+	private ByteBuffer outputBuffer = IOUtils.newByteBuffer();
 	
 	// whether decoding is taking place
 	private boolean decoding = false;
@@ -38,8 +40,9 @@ public class QuotedPrintableDecoder implements ByteTranscoder {
 	/**
 	 * Decode the next char on the input
 	 * If the return value is false, we should stop, there is not enough data
+	 * @throws IOException 
 	 */
-	private boolean decode(ReadableByteContainer in, WritableByteContainer out) {
+	private boolean decode(ReadableContainer<ByteBuffer> in, WritableContainer<ByteBuffer> out) throws IOException {
 		if (!decoding) {
 			first = null;
 			second = null;
@@ -48,7 +51,7 @@ public class QuotedPrintableDecoder implements ByteTranscoder {
 		
 		if (first == null) {
 			// no first char yet
-			if (in.read(buffer) <= 0)
+			if (in.read(IOUtils.wrap(buffer, false)) <= 0)
 				return false;
 			first = buffer[0] & 0xff;
 		}
@@ -58,7 +61,7 @@ public class QuotedPrintableDecoder implements ByteTranscoder {
 		else {
 			// there is no second char yet
 			if (second == null) {
-				if (in.read(buffer) <= 0)
+				if (in.read(IOUtils.wrap(buffer, false)) <= 0)
 					return false;
 				second = buffer[0] & 0xff;
 			}
@@ -77,14 +80,14 @@ public class QuotedPrintableDecoder implements ByteTranscoder {
 	}
 	
 	@Override
-	public void transcode(ReadableByteContainer in, WritableByteContainer out) {
-		if (outputBuffer.remainingData() == IOUtils.copy(outputBuffer, out)) {
+	public void transcode(ReadableContainer<ByteBuffer> in, WritableContainer<ByteBuffer> out) throws IOException {
+		if (outputBuffer.remainingData() == out.write(outputBuffer)) {
 			while (outputBuffer.remainingData() == 0) {
 				if (decoding) {
 					if (!decode(in, out))
 						break;
 				}
-				else if (in.read(buffer) == 1) {
+				else if (in.read(IOUtils.wrap(buffer, false)) == 1) {
 					int character = buffer[0] & 0xff;
 					if (character == ' ')
 						spaces++;
@@ -113,13 +116,13 @@ public class QuotedPrintableDecoder implements ByteTranscoder {
 		}
 	}
 	
-	private void write(WritableByteContainer out, byte [] bytes) {
-		int written = out.write(bytes);
+	private void write(WritableContainer<ByteBuffer> out, byte [] bytes) throws IOException {
+		int written = (int) out.write(IOUtils.wrap(bytes, true));
 		if (written != bytes.length)
 			outputBuffer.write(bytes, written, bytes.length - written);
 	}
 	
-	private void writeSpaces(WritableByteContainer out) {
+	private void writeSpaces(WritableContainer<ByteBuffer> out) throws IOException {
 		byte [] spacesToWrite = new byte [spaces];
 		for (int i = 0; i < spaces; i++)
 			spacesToWrite[i] = ' ';
@@ -128,10 +131,10 @@ public class QuotedPrintableDecoder implements ByteTranscoder {
 	}
 
 	@Override
-	public void flush(WritableByteContainer out) {
+	public void flush(WritableContainer<ByteBuffer> out) throws IOException {
 		// spaces at the end should be ignored so don't write them out
 		// only write whatever is left in the outputBuffer (if anything)
-		IOUtils.copy(outputBuffer, out);
+		out.write(outputBuffer);
 	}
 
 }

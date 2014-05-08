@@ -1,13 +1,15 @@
 package be.nabu.utils.codec.impl;
 
+import java.io.IOException;
 import java.util.zip.CRC32;
 import java.util.zip.Deflater;
 
 import be.nabu.utils.codec.util.ChecksummedReadableByteContainer;
 import be.nabu.utils.codec.util.ChecksummedWritableByteContainer;
 import be.nabu.utils.io.IOUtils;
-import be.nabu.utils.io.api.ReadableByteContainer;
-import be.nabu.utils.io.api.WritableByteContainer;
+import be.nabu.utils.io.api.ByteBuffer;
+import be.nabu.utils.io.api.ReadableContainer;
+import be.nabu.utils.io.api.WritableContainer;
 
 public class GZIPDecoder extends InflateTranscoder {
 	
@@ -32,22 +34,22 @@ public class GZIPDecoder extends InflateTranscoder {
 	}
 	
 	@Override
-	public void transcode(ReadableByteContainer in, WritableByteContainer out) {
+	public void transcode(ReadableContainer<ByteBuffer> in, WritableContainer<ByteBuffer> out) throws IOException {
 		if (readHeader(in) && !dataParsed)
 			super.transcode(in, new ChecksummedWritableByteContainer(out, crc));
 		else if (headerFinished && dataParsed && !footerParsed)
 			finish(in, out);
 	}
 	
-	private boolean readHeader(ReadableByteContainer readable) {
+	private boolean readHeader(ReadableContainer<ByteBuffer> readable) throws IOException {
 		if (headerFinished)
 			return true;
 		
-		ChecksummedReadableByteContainer checkedSummed = new ChecksummedReadableByteContainer(readable, crc);
+		ChecksummedReadableByteContainer checkSummed = new ChecksummedReadableByteContainer(readable, crc);
 		if (!initialHeaderParsed) {
 			long amountNeeded = 10 - buffer.remainingData();
 			// the initial header is 10 long so we need at least that much data
-			if (amountNeeded > 0 && IOUtils.copy(checkedSummed, buffer, amountNeeded) != amountNeeded)
+			if (amountNeeded > 0 && IOUtils.limitReadable(checkSummed, amountNeeded).read(buffer) != amountNeeded)
 				return false;
 			
 			byte [] header = new byte[10];
@@ -73,14 +75,14 @@ public class GZIPDecoder extends InflateTranscoder {
 		if (flag > 0 && (flag & 4) == 4 && extraLength == -1) {
 			// first there is a "length" descriptor which states how long the field is, it is two bytes long
 			long amountNeeded = 2 - buffer.remainingData();
-			if (amountNeeded > 0 && IOUtils.copy(checkedSummed, buffer, amountNeeded) != amountNeeded)
+			if (amountNeeded > 0 && IOUtils.limitReadable(checkSummed, amountNeeded).read(buffer) != amountNeeded)
 				return false;
 			extraLength = readUnsignedShort();
 		}
 		
 		// we still have extra field data to skip
 		if (extraLength > 0) {
-			extraLength -= IOUtils.skip(checkedSummed, extraLength);
+			extraLength -= checkSummed.read(IOUtils.newByteSink(extraLength));
 			// not enough data to skip entire extra field
 			if (extraLength > 0)
 				return false;
@@ -88,7 +90,7 @@ public class GZIPDecoder extends InflateTranscoder {
 		
 		// we need to skip the name (if any)
 		if (flag > 0 && (flag & 8) == 8 && !nameSkipped) {
-			while (IOUtils.copy(checkedSummed, buffer, 1) == 1) {
+			while (IOUtils.limitReadable(checkSummed, 1).read(buffer) == 1) {
 				if (readUnsignedByte() == 0) {
 					nameSkipped = true;
 					break;
@@ -100,7 +102,7 @@ public class GZIPDecoder extends InflateTranscoder {
 		
 		// we need to skip the comment (if any)
 		if (flag > 0 && (flag & 16) == 16 && !commentSkipped) {
-			while (IOUtils.copy(checkedSummed, buffer, 1) == 1) {
+			while (IOUtils.limitReadable(checkSummed, 1).read(buffer) == 1) {
 				if (readUnsignedByte() == 0) {
 					commentSkipped = true;
 					break;
@@ -113,7 +115,7 @@ public class GZIPDecoder extends InflateTranscoder {
 		// if there is a crc header, we need to check it
 		if (flag > 0 && (flag & 2) == 2 && !crcChecked) {
 			long amountNeeded = 2 - buffer.remainingData();
-			if (amountNeeded > 0 && IOUtils.copy(checkedSummed, buffer, amountNeeded) != amountNeeded)
+			if (amountNeeded > 0 && IOUtils.limitReadable(checkSummed, amountNeeded).read(buffer) != amountNeeded)
 				return false;
 			int expectedCRC = readUnsignedShort();
 			if (crc.getValue() != expectedCRC)
@@ -125,27 +127,27 @@ public class GZIPDecoder extends InflateTranscoder {
 		return true;
 	}
 	
-	private long readUnsignedInteger() {
+	private long readUnsignedInteger() throws IOException {
 		long firstValue = readUnsignedShort();
 		return ((long) readUnsignedShort() << 16) | firstValue;
 	}
 	
-	private int readUnsignedShort() {
+	private int readUnsignedShort() throws IOException {
 		int firstValue = readUnsignedByte();
 		return ((int) readUnsignedByte() << 8) | firstValue;
 	}
 	
-	private int readUnsignedByte() {
-		if (buffer.read(single) != 1)
+	private int readUnsignedByte() throws IOException {
+		if (buffer.read(IOUtils.wrap(single, false)) != 1)
 			throw new IllegalStateException("Not enough data available in buffer");
 		return single[0] & 0xff;
 	}
 
-	void finish(ReadableByteContainer in, WritableByteContainer out) {
+	void finish(ReadableContainer<ByteBuffer> in, WritableContainer<ByteBuffer> out) throws IOException {
 		dataParsed = true;
 		// there is an 8 byte footer
 		long amountNeeded = 8 - buffer.remainingData();
-		if (amountNeeded == 0 || IOUtils.copy(in, buffer, amountNeeded) == amountNeeded) {
+		if (amountNeeded == 0 || IOUtils.limitReadable(in, amountNeeded).read(buffer) == amountNeeded) {
 			long expectedCRC = readUnsignedInteger();
 			long expectedSize = readUnsignedInteger();
 			if (expectedCRC != crc.getValue())

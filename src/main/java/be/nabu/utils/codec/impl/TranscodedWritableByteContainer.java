@@ -2,19 +2,18 @@ package be.nabu.utils.codec.impl;
 
 import java.io.IOException;
 
-import be.nabu.utils.codec.api.ByteTranscoder;
-import be.nabu.utils.io.api.IORuntimeException;
-import be.nabu.utils.io.api.WritableByteContainer;
-import be.nabu.utils.io.impl.DynamicByteContainer;
+import be.nabu.utils.codec.api.Transcoder;
+import be.nabu.utils.io.api.Buffer;
+import be.nabu.utils.io.api.WritableContainer;
 
-public class TranscodedWritableByteContainer implements WritableByteContainer {
+public class TranscodedWritableByteContainer<T extends Buffer<T>> implements WritableContainer<T> {
 
-	private ByteTranscoder transcoder;
-	private WritableByteContainer parent;
-	private DynamicByteContainer buffer = new DynamicByteContainer();
+	private Transcoder<T> transcoder;
+	private WritableContainer<T> parent;
+	private Buffer<T> buffer;
 	private boolean closed = false;
 	
-	public TranscodedWritableByteContainer(WritableByteContainer parent, ByteTranscoder transcoder) {
+	public TranscodedWritableByteContainer(WritableContainer<T> parent, Transcoder<T> transcoder) {
 		this.parent = parent;
 		this.transcoder = transcoder;
 	}
@@ -29,14 +28,13 @@ public class TranscodedWritableByteContainer implements WritableByteContainer {
 	}
 
 	@Override
-	public int write(byte [] bytes) {
-		return write(bytes, 0, bytes.length);
-	}
-
-	@Override
-	public int write(byte[] bytes, int offset, int length) {
+	public long write(T source) throws IOException {
+		if (buffer == null)
+			buffer = source.getFactory().newInstance();
+		
+		long length = source.remainingData();
 		long initialSize = buffer.remainingData();
-		buffer.write(bytes, offset, length);
+		buffer.write(source);
 		transcoder.transcode(buffer, parent);
 		// there is no real way of knowing exactly how much of the data successfully made it to the target, at least with respect to the input
 		// we could measure the data being written to the parent but this may bear no direct correlation to the amount of data we put in (depending on the transcoding being done)
@@ -47,12 +45,12 @@ public class TranscodedWritableByteContainer implements WritableByteContainer {
 	}
 
 	@Override
-	public void flush() {
+	public void flush() throws IOException {
 		long remaining = buffer.remainingData();
 		if (remaining > 0) {
 			transcoder.transcode(buffer, parent);
 			if (buffer.remainingData() != 0)
-				throw new IORuntimeException("Could not flush " + buffer.remainingData() + " bytes to backend");
+				throw new IOException("Could not flush " + buffer.remainingData() + " bytes to backend");
 		}
 		transcoder.flush(parent);
 		parent.flush();

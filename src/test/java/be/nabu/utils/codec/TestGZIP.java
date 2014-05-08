@@ -8,20 +8,21 @@ import junit.framework.TestCase;
 import be.nabu.utils.codec.impl.GZIPDecoder;
 import be.nabu.utils.codec.impl.GZIPEncoder;
 import be.nabu.utils.io.IOUtils;
-import be.nabu.utils.io.api.ByteContainer;
+import be.nabu.utils.io.api.ByteBuffer;
+import be.nabu.utils.io.api.Container;
 
 public class TestGZIP extends TestCase {
 	
 	public void testGZIPEncoder() throws IOException {
-		ByteContainer container = IOUtils.newByteContainer();
+		Container<ByteBuffer> container = IOUtils.newByteBuffer();
+		
 		container = IOUtils.wrap(
 			container,
-			TranscoderUtils.wrapOutput(container, new GZIPEncoder())
+			TranscoderUtils.wrapWritable(container, new GZIPEncoder())
 		);
-		
 		String string = "testing this";
-		container.write(string.getBytes());
-		IOUtils.close(container);
+		container.write(IOUtils.wrap(string.getBytes(), true));
+		container.close();
 		
 		GZIPInputStream gzip = new GZIPInputStream(IOUtils.toInputStream(container));
 		try {
@@ -35,9 +36,9 @@ public class TestGZIP extends TestCase {
 	}
 	
 	public void testGZIPDecoder() throws IOException {
-		ByteContainer container = IOUtils.newByteContainer();
+		Container<ByteBuffer> container = IOUtils.newByteBuffer();
 		container = IOUtils.wrap(
-			TranscoderUtils.wrapInput(container, new GZIPDecoder()),
+			TranscoderUtils.wrapReadable(container, new GZIPDecoder()),
 			container
 		);
 		String string = "testing this";

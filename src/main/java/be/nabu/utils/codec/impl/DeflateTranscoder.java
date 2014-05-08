@@ -1,19 +1,19 @@
 package be.nabu.utils.codec.impl;
 
+import java.io.IOException;
 import java.util.zip.Deflater;
 
-import be.nabu.utils.codec.api.ByteTranscoder;
+import be.nabu.utils.codec.api.Transcoder;
 import be.nabu.utils.io.IOUtils;
-import be.nabu.utils.io.api.IORuntimeException;
-import be.nabu.utils.io.api.ReadableByteContainer;
-import be.nabu.utils.io.api.WritableByteContainer;
-import be.nabu.utils.io.impl.DynamicByteContainer;
+import be.nabu.utils.io.api.ByteBuffer;
+import be.nabu.utils.io.api.ReadableContainer;
+import be.nabu.utils.io.api.WritableContainer;
 
 /**
  * The deflater transcoder can only be flushed once because it will flush out the remaining state when this is done
  * IMPORTANT: the deflater itself has a sizable buffer (around 250-260 kb) so the deflater.deflate() will return 0 all the time for smaller documents, this is normal
  */
-public class DeflateTranscoder implements ByteTranscoder {
+public class DeflateTranscoder implements Transcoder<ByteBuffer> {
 
 	public enum DeflaterLevel {
 		BEST_COMPRESSION(Deflater.BEST_COMPRESSION),
@@ -33,7 +33,7 @@ public class DeflateTranscoder implements ByteTranscoder {
 		}
 	}
 	
-	DynamicByteContainer buffer = new DynamicByteContainer();
+	ByteBuffer buffer = IOUtils.newByteBuffer();
 	
 	Deflater deflater;
 	
@@ -48,9 +48,9 @@ public class DeflateTranscoder implements ByteTranscoder {
 	}
 	
 	@Override
-	public void transcode(ReadableByteContainer in, WritableByteContainer out) {
+	public void transcode(ReadableContainer<ByteBuffer> in, WritableContainer<ByteBuffer> out) throws IOException {
 		// flush any buffered data to out
-		if (buffer.remainingData() == IOUtils.copy(buffer, out)) {
+		if (buffer.remainingData() == out.write(buffer)) {
 			// as long as we don't have to buffer anything, keep going
 			while (buffer.remainingData() == 0) {
 				// try to deflate data
@@ -61,7 +61,7 @@ public class DeflateTranscoder implements ByteTranscoder {
 						break;
 					}
 					else if (deflater.needsInput()) {
-						read = in.read(readBuffer);
+						read = (int) in.read(IOUtils.wrap(readBuffer, false));
 						// if there is no more data, set the deflater to finished
 						if (read == -1) {
 							flush(out);
@@ -74,12 +74,12 @@ public class DeflateTranscoder implements ByteTranscoder {
 							deflater.setInput(readBuffer, 0, read);
 					}
 					else
-						throw new IORuntimeException("Can not continue deflating");
+						throw new IOException("Can not continue deflating");
 				}
 				else {
-					int written = out.write(deflateBuffer, 0, read);
+					int written = (int) out.write(IOUtils.wrap(deflateBuffer, 0, read, true));
 					if (written < 0)
-						throw new IORuntimeException("Output is closed");
+						throw new IOException("Output is closed");
 					else if (written != read) {
 						buffer.write(deflateBuffer, written, read - written);
 						break;
@@ -89,7 +89,7 @@ public class DeflateTranscoder implements ByteTranscoder {
 		}
 	}
 	
-	void flushDeflater() {
+	void flushDeflater() throws IOException {
 		if (!deflater.finished())
 			deflater.finish();
 		int read = 0;
@@ -98,10 +98,10 @@ public class DeflateTranscoder implements ByteTranscoder {
 	}
 
 	@Override
-	public void flush(WritableByteContainer out) {
+	public void flush(WritableContainer<ByteBuffer> out) throws IOException {
 		flushDeflater();
-		if (buffer.remainingData() != IOUtils.copy(buffer, out))
-			throw new IORuntimeException("Could not copy all the bytes to the output, there are " + buffer.remainingData() + " bytes remaining");
+		if (buffer.remainingData() != out.write(buffer))
+			throw new IOException("Could not copy all the bytes to the output, there are " + buffer.remainingData() + " bytes remaining");
 	}
 
 }
