@@ -46,7 +46,7 @@ public class TranscodedReadableByteContainer<T extends Buffer<T>> implements Rea
 		
 		limitedBuffer = IOUtils.limitWritable(buffer, target.remainingSpace());
 		
-		if (target.remainingSpace() > 0) {
+		if (target.remainingSpace() > 0 && !parent.isEOF()) {
 			transcoder.transcode(parent, limitedBuffer);
 			target.write(buffer);
 			// if nothing was written to the output and there is no more input data, flush the transcoder

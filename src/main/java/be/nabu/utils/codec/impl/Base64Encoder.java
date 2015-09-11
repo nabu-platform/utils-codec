@@ -62,13 +62,15 @@ public class Base64Encoder implements Transcoder<ByteBuffer> {
 	@Override
 	public void transcode(ReadableContainer<ByteBuffer> in, WritableContainer<ByteBuffer> out) throws IOException {
 		// flush buffer (if any)
-		if (outputBuffer.remainingData() == IOUtils.copyBytes(outputBuffer, out)) {
+		if (outputBuffer.remainingData() == 0 || outputBuffer.remainingData() == out.write(outputBuffer)) {
 			// continue reading where you left off...
 			while ((read = (int) in.read(IOUtils.wrap(bytes, lastRead, 3 - lastRead, false))) == 3 - lastRead) {
 				encode(bytes, 0, 3);
 				write(out);
 				// set lastRead to 0 so we don't assume something is in the buffer if there isn't
 				lastRead = 0;
+				// make sure it doesn't get counted against the lastRead after the loop
+				read = 0;
 				// it could not all be written to the output
 				if (outputBuffer.remainingData() > 0)
 					break;
@@ -87,7 +89,7 @@ public class Base64Encoder implements Transcoder<ByteBuffer> {
 			System.arraycopy(encoded, breakPoint, encodedWithLineBreak, breakPoint + 2, 4 - breakPoint);
 			int written = (int) out.write(IOUtils.wrap(encodedWithLineBreak, 0, 6, true));
 			if (written < 6)
-				outputBuffer.write(encoded, written, 6 - written);
+				outputBuffer.write(encodedWithLineBreak, written, 6 - written);
 			byteCount = 4 - breakPoint;
 		}
 		else {

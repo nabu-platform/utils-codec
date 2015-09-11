@@ -38,6 +38,21 @@ public class TestBase64 extends TestCase {
 		assertEquals(expected, IOUtils.toString(container));
 	}
 	
+	public void testSmallBufferCopy() throws IOException {
+		String string = "This is something that should be longer than a single line. A single line is 76 bytes of data encoded so in decoded form this is 57 bytes. As long as this phrase is longer we will hit that!";
+		
+		String expected = "VGhpcyBpcyBzb21ldGhpbmcgdGhhdCBzaG91bGQgYmUgbG9uZ2VyIHRoYW4gYSBzaW5nbGUgbGlu\r\n" +
+				"ZS4gQSBzaW5nbGUgbGluZSBpcyA3NiBieXRlcyBvZiBkYXRhIGVuY29kZWQgc28gaW4gZGVjb2Rl\r\n" +
+				"ZCBmb3JtIHRoaXMgaXMgNTcgYnl0ZXMuIEFzIGxvbmcgYXMgdGhpcyBwaHJhc2UgaXMgbG9uZ2Vy\r\n" +
+				"IHdlIHdpbGwgaGl0IHRoYXQh";
+		
+		ReadableContainer<ByteBuffer> readable = TranscoderUtils.wrapReadable(IOUtils.wrap(string.getBytes("UTF-8"), true), new Base64Encoder());
+		
+		Container<ByteBuffer> target = IOUtils.newByteBuffer();
+		IOUtils.copy(readable, target, IOUtils.newByteBuffer(20, true));
+		assertEquals(expected, new String(IOUtils.toBytes(target), "ASCII"));
+	}
+	
 	public void testEncode() throws IOException {
 		String string = "something new é!";
 		String expected = "c29tZXRoaW5nIG5ldyDD";
