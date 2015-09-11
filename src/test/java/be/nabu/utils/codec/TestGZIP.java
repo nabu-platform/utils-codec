@@ -5,13 +5,46 @@ import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
 import junit.framework.TestCase;
+import be.nabu.utils.codec.impl.DeflateTranscoder;
 import be.nabu.utils.codec.impl.GZIPDecoder;
 import be.nabu.utils.codec.impl.GZIPEncoder;
+import be.nabu.utils.codec.impl.InflateTranscoder;
 import be.nabu.utils.io.IOUtils;
 import be.nabu.utils.io.api.ByteBuffer;
 import be.nabu.utils.io.api.Container;
+import be.nabu.utils.io.api.ReadableContainer;
 
 public class TestGZIP extends TestCase {
+	
+	public void testZipWithSmallBuffer() throws IOException {
+		String string = "testing this much longer this that could trigger some sort of an error with small buffer edge cases";
+		ReadableContainer<ByteBuffer> readable = TranscoderUtils.wrapReadable(IOUtils.wrap(string.getBytes("UTF-8"), true), new GZIPEncoder());
+		
+		Container<ByteBuffer> container = IOUtils.newByteBuffer();
+		container = IOUtils.wrap(
+			container,
+			TranscoderUtils.wrapWritable(container, new GZIPDecoder())
+		);
+		// 20: crashes
+		// 125: hangs!
+		IOUtils.copy(readable, container, IOUtils.newByteBuffer(20, true));
+		assertEquals(string, new String(IOUtils.toBytes(container), "UTF-8"));
+	}
+	
+	public void testDeflateWithSmallBuffer() throws IOException {
+		String string = "testing this much longer this that could trigger some sort of an error with small buffer edge cases";
+		ReadableContainer<ByteBuffer> readable = TranscoderUtils.wrapReadable(IOUtils.wrap(string.getBytes("UTF-8"), true), new DeflateTranscoder());
+		
+		Container<ByteBuffer> container = IOUtils.newByteBuffer();
+		container = IOUtils.wrap(
+			container,
+			TranscoderUtils.wrapWritable(container, new InflateTranscoder())
+		);
+		// 20: crashes
+		// 125: hangs!
+		IOUtils.copy(readable, container, IOUtils.newByteBuffer(20, true));
+		assertEquals(string, new String(IOUtils.toBytes(container), "UTF-8"));
+	}
 	
 	public void testGZIPEncoder() throws IOException {
 		Container<ByteBuffer> container = IOUtils.newByteBuffer();

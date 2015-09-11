@@ -18,6 +18,7 @@ public class GZIPEncoder extends DeflateTranscoder {
 	final static int MAGIC_NUMBER = 0x8b1f;
 	
 	private CRC32 crc = new CRC32();
+	private boolean wroteFooter = false;
 	
 	public GZIPEncoder() {
 		this(DeflaterLevel.DEFAULT_COMPRESSION);
@@ -69,8 +70,11 @@ public class GZIPEncoder extends DeflateTranscoder {
 	
 	@Override
 	public void flush(WritableContainer<ByteBuffer> out) throws IOException {
-		flushDeflater();
-		writeFooter(buffer);
+		if (!wroteFooter) {
+			flushDeflater();
+			writeFooter(buffer);
+			wroteFooter = true;
+		}
 		if (buffer.remainingData() != out.write(buffer))
 			throw new IOException("Could not copy all the bytes to the output, there are " + buffer.remainingData() + " bytes remaining");
 	}

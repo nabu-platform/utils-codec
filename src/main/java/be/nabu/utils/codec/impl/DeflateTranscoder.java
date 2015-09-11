@@ -49,41 +49,38 @@ public class DeflateTranscoder implements Transcoder<ByteBuffer> {
 	
 	@Override
 	public void transcode(ReadableContainer<ByteBuffer> in, WritableContainer<ByteBuffer> out) throws IOException {
-		// flush any buffered data to out
-		if (buffer.remainingData() == out.write(buffer)) {
-			// as long as we don't have to buffer anything, keep going
-			while (buffer.remainingData() == 0) {
-				// try to deflate data
-				int read = deflater.deflate(deflateBuffer);
-				if (read == 0) {
-					if (deflater.finished()) {
-						flush(out);
-						break;
-					}
-					else if (deflater.needsInput()) {
-						read = (int) in.read(IOUtils.wrap(readBuffer, false));
-						// if there is no more data, set the deflater to finished
-						if (read == -1) {
-							flush(out);
-							break;
-						}
-						// currently no data
-						else if (read == 0)
-							break;
-						else
-							deflater.setInput(readBuffer, 0, read);
-					}
-					else
-						throw new IOException("Can not continue deflating");
+		// as long as we don't have to buffer anything, keep going
+		while (buffer.remainingData() == 0 || buffer.remainingData() == out.write(buffer)) {
+			// try to deflate data
+			int read = deflater.deflate(deflateBuffer);
+			if (read == 0) {
+				if (deflater.finished()) {
+					flushDeflater();
+					break;
 				}
-				else {
-					int written = (int) out.write(IOUtils.wrap(deflateBuffer, 0, read, true));
-					if (written < 0)
-						throw new IOException("Output is closed");
-					else if (written != read) {
-						buffer.write(deflateBuffer, written, read - written);
+				else if (deflater.needsInput()) {
+					read = (int) in.read(IOUtils.wrap(readBuffer, false));
+					// if there is no more data, set the deflater to finished
+					if (read == -1) {
+						flushDeflater();
 						break;
 					}
+					// currently no data
+					else if (read == 0)
+						break;
+					else
+						deflater.setInput(readBuffer, 0, read);
+				}
+				else
+					throw new IOException("Can not continue deflating");
+			}
+			else {
+				int written = (int) out.write(IOUtils.wrap(deflateBuffer, 0, read, true));
+				if (written < 0)
+					throw new IOException("Output is closed");
+				else if (written != read) {
+					buffer.write(deflateBuffer, written, read - written);
+					break;
 				}
 			}
 		}

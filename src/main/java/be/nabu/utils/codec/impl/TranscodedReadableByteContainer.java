@@ -3,9 +3,7 @@ package be.nabu.utils.codec.impl;
 import java.io.IOException;
 
 import be.nabu.utils.codec.api.Transcoder;
-import be.nabu.utils.io.IOUtils;
 import be.nabu.utils.io.api.Buffer;
-import be.nabu.utils.io.api.LimitedWritableContainer;
 import be.nabu.utils.io.api.ReadableContainer;
 import be.nabu.utils.io.containers.EOFReadableContainer;
 
@@ -17,7 +15,7 @@ public class TranscodedReadableByteContainer<T extends Buffer<T>> implements Rea
 	private Transcoder<T> transcoder;
 	private EOFReadableContainer<T> parent;
 	private T buffer;
-	private LimitedWritableContainer<T> limitedBuffer;
+	private T limitedBuffer;
 	
 	public TranscodedReadableByteContainer(ReadableContainer<T> parent, Transcoder<T> transcoder) {
 		this.parent = new EOFReadableContainer<T>(parent);
@@ -44,11 +42,11 @@ public class TranscodedReadableByteContainer<T extends Buffer<T>> implements Rea
 		if (buffer.remainingData() > 0)
 			target.write(buffer);
 		
-		limitedBuffer = IOUtils.limitWritable(buffer, target.remainingSpace());
+		limitedBuffer = buffer.getFactory().limit(buffer, null, target.remainingSpace());
 		
 		if (target.remainingSpace() > 0) {
 			transcoder.transcode(parent, limitedBuffer);
-			target.write(buffer);
+			target.write(limitedBuffer);
 			// if nothing was written to the output and there is no more input data, flush the transcoder
 			if (limitedBuffer.remainingSpace() == length && parent.isEOF()) {
 				transcoder.flush(limitedBuffer);
