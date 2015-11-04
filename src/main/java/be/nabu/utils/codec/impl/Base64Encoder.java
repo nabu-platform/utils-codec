@@ -81,7 +81,7 @@ public class Base64Encoder implements Transcoder<ByteBuffer> {
 	}
 	
 	private void write(WritableContainer<ByteBuffer> out) throws IOException {
-		if (byteCount + 4 > bytesPerLine) {
+		if (bytesPerLine > 0 && byteCount + 4 > bytesPerLine) {
 			int breakPoint = bytesPerLine - byteCount;
 			System.arraycopy(encoded, 0, encodedWithLineBreak, 0, breakPoint);
 			encodedWithLineBreak[breakPoint] = '\r';
@@ -151,6 +151,14 @@ public class Base64Encoder implements Transcoder<ByteBuffer> {
 			// make sure it is flushed only once
 			lastRead = 0;
 		}
+	}
+
+	public int getBytesPerLine() {
+		return bytesPerLine;
+	}
+
+	public void setBytesPerLine(int bytesPerLine) {
+		this.bytesPerLine = bytesPerLine;
 	}
 
 }
