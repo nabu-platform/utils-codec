@@ -46,11 +46,13 @@ public class TranscodedWritableByteContainer<T extends Buffer<T>> implements Wri
 
 	@Override
 	public void flush() throws IOException {
-		long remaining = buffer.remainingData();
-		if (remaining > 0) {
-			transcoder.transcode(buffer, parent);
-			if (buffer.remainingData() != 0)
-				throw new IOException("Could not flush " + buffer.remainingData() + " bytes to backend");
+		if (buffer != null) {
+			long remaining = buffer.remainingData();
+			if (remaining > 0) {
+				transcoder.transcode(buffer, parent);
+				if (buffer.remainingData() != 0)
+					throw new IOException("Could not flush " + buffer.remainingData() + " bytes to backend");
+			}
 		}
 		transcoder.flush(parent);
 		parent.flush();
