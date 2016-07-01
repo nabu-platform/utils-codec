@@ -40,7 +40,7 @@ public class DeflateTranscoder implements Transcoder<ByteBuffer> {
 	private byte [] readBuffer = new byte[512], deflateBuffer = new byte[512];
 
 	public DeflateTranscoder() {
-		this(DeflaterLevel.DEFAULT_COMPRESSION, false);
+		this(DeflaterLevel.BEST_SPEED, false);
 	}
 	
 	public DeflateTranscoder(DeflaterLevel level, boolean noWrap) {

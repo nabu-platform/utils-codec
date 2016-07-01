@@ -21,7 +21,7 @@ public class GZIPEncoder extends DeflateTranscoder {
 	private boolean wroteFooter = false;
 	
 	public GZIPEncoder() {
-		this(DeflaterLevel.DEFAULT_COMPRESSION);
+		this(DeflaterLevel.BEST_SPEED);
 	}
 
 	public GZIPEncoder(DeflaterLevel level) {
