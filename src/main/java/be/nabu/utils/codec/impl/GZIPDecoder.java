@@ -159,4 +159,8 @@ public class GZIPDecoder extends InflateTranscoder {
 		}
 	}
 	
+	@Override
+	public boolean isFinished() {
+		return super.isFinished() && headerFinished && dataParsed && footerParsed;
+	}
 }

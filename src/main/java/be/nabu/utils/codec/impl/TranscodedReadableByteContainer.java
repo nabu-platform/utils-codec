@@ -2,6 +2,7 @@ package be.nabu.utils.codec.impl;
 
 import java.io.IOException;
 
+import be.nabu.utils.codec.api.FinishableTranscoder;
 import be.nabu.utils.codec.api.Transcoder;
 import be.nabu.utils.io.api.Buffer;
 import be.nabu.utils.io.api.ReadableContainer;
@@ -16,6 +17,7 @@ public class TranscodedReadableByteContainer<T extends Buffer<T>> implements Rea
 	private EOFReadableContainer<T> parent;
 	private T buffer;
 	private T limitedBuffer;
+	private boolean eof;
 	
 	public TranscodedReadableByteContainer(ReadableContainer<T> parent, Transcoder<T> transcoder) {
 		this.parent = new EOFReadableContainer<T>(parent);
@@ -44,16 +46,23 @@ public class TranscodedReadableByteContainer<T extends Buffer<T>> implements Rea
 		
 		limitedBuffer = buffer.getFactory().limit(buffer, null, target.remainingSpace());
 		
+		if (!eof) {
+			eof = parent.isEOF() || (transcoder instanceof FinishableTranscoder && ((FinishableTranscoder) transcoder).isFinished());
+		}
 		if (target.remainingSpace() > 0) {
 			transcoder.transcode(parent, limitedBuffer);
 			target.write(limitedBuffer);
+			
+			if (!eof) {
+				eof = parent.isEOF() || (transcoder instanceof FinishableTranscoder && ((FinishableTranscoder) transcoder).isFinished());
+			}
 			// if nothing was written to the output and there is no more input data, flush the transcoder
-			if (limitedBuffer.remainingSpace() == length && parent.isEOF()) {
+			if (limitedBuffer.remainingSpace() == length && eof) {
 				transcoder.flush(limitedBuffer);
 				target.write(buffer);
 			}
 		}
 		int read = (int) (length - limitedBuffer.remainingSpace());
-		return read == 0 && parent.isEOF() ? -1 : read;
+		return read == 0 && eof ? -1 : read;
 	}
 }

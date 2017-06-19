@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.util.zip.DataFormatException;
 import java.util.zip.Inflater;
 
+import be.nabu.utils.codec.api.FinishableTranscoder;
 import be.nabu.utils.codec.api.Transcoder;
 import be.nabu.utils.io.IOUtils;
 import be.nabu.utils.io.api.ByteBuffer;
@@ -13,7 +14,7 @@ import be.nabu.utils.io.api.WritableContainer;
 /**
  * The inflater transcoder can be flushed multiple times as it has no inherent remaining state
  */
-public class InflateTranscoder implements Transcoder<ByteBuffer> {
+public class InflateTranscoder implements Transcoder<ByteBuffer>, FinishableTranscoder {
 
 	ByteBuffer buffer = IOUtils.newByteBuffer();
 	
@@ -22,6 +23,8 @@ public class InflateTranscoder implements Transcoder<ByteBuffer> {
 	private int read;
 	
 	private byte [] readBuffer = new byte[512], inflateBuffer = new byte[512];
+
+	private boolean finishCalled;
 
 	public InflateTranscoder(boolean noWrap) {
 		this.inflater = new Inflater(noWrap);
@@ -74,16 +77,25 @@ public class InflateTranscoder implements Transcoder<ByteBuffer> {
 				throw new IOException(e);
 			}
 		}
+		else if (buffer.remainingData() == 0 && inflater.finished() && !finishCalled) {
+			finish(in, out);
+		}
 	}
 	
 	void finish(ReadableContainer<ByteBuffer> in, WritableContainer<ByteBuffer> out) throws IOException {
 		flush(out);
+		finishCalled = true;
 	}
 
 	@Override
 	public void flush(WritableContainer<ByteBuffer> out) throws IOException {
 		if (buffer.remainingData() != out.write(buffer))
 			throw new IOException("Could not copy all the bytes to the output, there are " + buffer.remainingData() + " bytes remaining");
+	}
+
+	@Override
+	public boolean isFinished() {
+		return inflater.finished();
 	}
 
 }
