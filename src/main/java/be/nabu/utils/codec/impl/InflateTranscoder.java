@@ -24,7 +24,7 @@ public class InflateTranscoder implements Transcoder<ByteBuffer>, FinishableTran
 	
 	private byte [] readBuffer = new byte[512], inflateBuffer = new byte[512];
 
-	private boolean finishCalled;
+	private boolean finishCalled, dataFinished, prematurelyEnded;
 
 	public InflateTranscoder(boolean noWrap) {
 		this.inflater = new Inflater(noWrap);
@@ -40,26 +40,31 @@ public class InflateTranscoder implements Transcoder<ByteBuffer>, FinishableTran
 		if (buffer.remainingData() == out.write(buffer) && !inflater.finished()) {
 			try {
 				int read = 0;
-				while ((read = inflater.inflate(inflateBuffer)) >= 0) {
+				while (!prematurelyEnded && (read = inflater.inflate(inflateBuffer)) >= 0) {
 					if (read == 0) {
 						if (inflater.finished() || inflater.needsDictionary()) {
 							// if the inflater is finished, it may not have finished its latest input
 							// pump the remaining data to the buffer
 							buffer.write(readBuffer, this.read - inflater.getRemaining(), inflater.getRemaining());
+							dataFinished = true;
 							// call the finish service which allows for further processing
 							finish(in, out);
 							break;
 						}
 						else if (inflater.needsInput()) {
-							this.read = (int) in.read(IOUtils.wrap(readBuffer, inflater.getRemaining(), readBuffer.length - inflater.getRemaining(), false));
-							if (this.read == -1) {
-								flush(out);
+							int newlyRead = (int) in.read(IOUtils.wrap(readBuffer, inflater.getRemaining(), readBuffer.length - inflater.getRemaining(), false));
+							if (newlyRead == -1) {
+								prematurelyEnded = true;
+								buffer.write(readBuffer, this.read - inflater.getRemaining(), inflater.getRemaining());
+								finish(in, out);
 								break;
 							}
-							else if (this.read == 0)
+							else if (newlyRead == 0)
 								break;
-							else
+							else {
+								this.read = inflater.getRemaining() + newlyRead;
 								inflater.setInput(readBuffer, 0, this.read);
+							}
 						}
 						else
 							throw new TranscoderRuntimeException("Inflater can not provide data");
@@ -78,24 +83,34 @@ public class InflateTranscoder implements Transcoder<ByteBuffer>, FinishableTran
 			}
 		}
 		else if (buffer.remainingData() == 0 && inflater.finished() && !finishCalled) {
+			buffer.write(readBuffer, this.read - inflater.getRemaining(), inflater.getRemaining());
+			dataFinished = true;
 			finish(in, out);
 		}
 	}
 	
 	void finish(ReadableContainer<ByteBuffer> in, WritableContainer<ByteBuffer> out) throws IOException {
-		flush(out);
 		finishCalled = true;
+		flush(out);
 	}
 
 	@Override
 	public void flush(WritableContainer<ByteBuffer> out) throws IOException {
-		if (buffer.remainingData() != out.write(buffer))
+		if (!isFinished() && !dataFinished) {
+			throw new IOException("Could not finish the unzipping");
+		}
+		else if (isFinished() && buffer.remainingData() != out.write(buffer)) {
 			throw new IOException("Could not copy all the bytes to the output, there are " + buffer.remainingData() + " bytes remaining");
+		}
 	}
 
 	@Override
 	public boolean isFinished() {
 		return inflater.finished();
+	}
+	
+	public boolean isDataFinished() {
+		return dataFinished;
 	}
 
 }
