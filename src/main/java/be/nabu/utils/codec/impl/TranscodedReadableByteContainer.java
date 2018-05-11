@@ -10,6 +10,14 @@ import be.nabu.utils.io.containers.EOFReadableContainer;
 
 /**
  * There is no target to flush to before closing so currently we presume that all transformers can (given a proper input) return the fully transformed content
+ * 
+ * Update @2018-05-11: usecase is the http chunked reader will always try to fill its chunk.
+ * However, this means in exceptional cases, it can call the read() with a very tiny amount left (if most of the chunk is already full)
+ * In the past, if nothing was read _and_ the input was EOFed, we would flush the remainder to the incoming target
+ * However, if that target is too small for the flush (as can be with a tiny remaining chunk), we can get an exception
+ * In the usecase the GZIP encoder could not flush the last 2 bytes of its footer (transcoder.flush(limitedBuffer))
+ * The flush() was already more or less badly designed (it should've returned a long so we can flush repeatedly...) but fixing that would be too much work
+ * So instead, we flush to the main buffer which has no limit and auto-drains on multiple reads, we just had to make sure the "read" amount takes that into account 
  */
 public class TranscodedReadableByteContainer<T extends Buffer<T>> implements ReadableContainer<T> {
 
@@ -46,6 +54,7 @@ public class TranscodedReadableByteContainer<T extends Buffer<T>> implements Rea
 		
 		limitedBuffer = buffer.getFactory().limit(buffer, null, target.remainingSpace());
 		
+		long flushedSize = 0;
 		if (!eof) {
 			eof = parent.isEOF() || (transcoder instanceof FinishableTranscoder && ((FinishableTranscoder) transcoder).isFinished());
 		}
@@ -58,11 +67,13 @@ public class TranscodedReadableByteContainer<T extends Buffer<T>> implements Rea
 			}
 			// if nothing was written to the output and there is no more input data, flush the transcoder
 			if (limitedBuffer.remainingSpace() == length && eof) {
-				transcoder.flush(limitedBuffer);
+				long originalData = buffer.remainingData();
+				transcoder.flush(buffer);
+				flushedSize = buffer.remainingData() - originalData;
 				target.write(buffer);
 			}
 		}
-		int read = (int) (length - limitedBuffer.remainingSpace());
+		int read = (int) (length - limitedBuffer.remainingSpace() + flushedSize);
 		return read == 0 && eof ? -1 : read;
 	}
 }
