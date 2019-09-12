@@ -97,7 +97,7 @@ public class InflateTranscoder implements Transcoder<ByteBuffer>, FinishableTran
 	@Override
 	public void flush(WritableContainer<ByteBuffer> out) throws IOException {
 		if (!isFinished() && !dataFinished) {
-			throw new IOException("Could not finish the unzipping");
+			throw new IOException("Could not finish the unzipping (inflater finished: " + isFinished() + " / data finished: " + dataFinished + ")");
 		}
 		else if (isFinished() && buffer.remainingData() != out.write(buffer)) {
 			throw new IOException("Could not copy all the bytes to the output, there are " + buffer.remainingData() + " bytes remaining");

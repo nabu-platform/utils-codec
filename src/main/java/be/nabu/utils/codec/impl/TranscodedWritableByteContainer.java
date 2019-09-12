@@ -21,9 +21,13 @@ public class TranscodedWritableByteContainer<T extends Buffer<T>> implements Wri
 	@Override
 	public void close() throws IOException {
 		if (!closed) {
-			flush();
-			parent.close();
-			closed = true;
+			try {
+				flush();
+			}
+			finally {
+				closed = true;
+				parent.close();
+			}
 		}
 	}
 
