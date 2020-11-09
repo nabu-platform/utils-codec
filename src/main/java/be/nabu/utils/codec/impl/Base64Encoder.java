@@ -11,9 +11,18 @@ import be.nabu.utils.io.buffers.bytes.DynamicByteBuffer;
 
 /**
  * need support for line length
+ * 
+ * check https://en.wikipedia.org/wiki/Base64, there are multiple different versions of base64, they differ mostly in two areas:
+ * 
+ * - the 62nd & 63rd sign (so + and /) 
+ * - the optional or mandatory padding (or not allowed)
+ * 
+ * for jwt for example, they use base64url (instead of regular)
  */
 public class Base64Encoder implements Transcoder<ByteBuffer> {
 
+	private boolean useBase64Url = false;
+	
 	static final char [] codes = new char [] {
 	//	 0	 1	 2	 3	 4	 5	 6	 7
 		'A','B','C','D','E','F','G','H',	// 0
@@ -24,6 +33,19 @@ public class Base64Encoder implements Transcoder<ByteBuffer> {
 		'o','p','q','r','s','t','u','v',	// 5
 		'w','x','y','z','0','1','2','3',	// 6
 		'4','5','6','7','8','9','+','/' 	// 7
+	};
+	
+	
+	static final char [] urlcodes = new char [] {
+	//	 0	 1	 2	 3	 4	 5	 6	 7
+		'A','B','C','D','E','F','G','H',	// 0
+		'I','J','K','L','M','N','O','P',	// 1
+		'Q','R','S','T','U','V','W','X',	// 2
+		'Y','Z','a','b','c','d','e','f',	// 3
+		'g','h','i','j','k','l','m','n',	// 4
+		'o','p','q','r','s','t','u','v',	// 5
+		'w','x','y','z','0','1','2','3',	// 6
+		'4','5','6','7','8','9','-','_' 	// 7
 	};
 	
 	private DynamicByteBuffer outputBuffer = new DynamicByteBuffer();
@@ -121,19 +143,19 @@ public class Base64Encoder implements Transcoder<ByteBuffer> {
 	}
 	
 	private byte encodeFirst(byte first) {
-		return (byte) codes[(first >>> 2) & 0x3f];
+		return useBase64Url ? (byte) urlcodes[(first >>> 2) & 0x3f] : (byte) codes[(first >>> 2) & 0x3f];
 	}
 	
 	private byte encodeSecond(byte first, byte second) {
-		return (byte) codes[((first << 4) & 0x30) + ((second >>> 4) & 0xf)];
+		return useBase64Url ? (byte) urlcodes[((first << 4) & 0x30) + ((second >>> 4) & 0xf)] : (byte) codes[((first << 4) & 0x30) + ((second >>> 4) & 0xf)];
 	}
 	
 	private byte encodeThird(byte second, byte third) {
-		return (byte) codes[((second << 2) & 0x3c) + ((third >>> 6) & 0x3)];
+		return useBase64Url ? (byte) urlcodes[((second << 2) & 0x3c) + ((third >>> 6) & 0x3)] : (byte) codes[((second << 2) & 0x3c) + ((third >>> 6) & 0x3)];
 	}
 	
 	private byte encodeFourth(byte third) {
-		return (byte) codes[third & 0x3f];
+		return useBase64Url ? (byte) urlcodes[third & 0x3f] : (byte) codes[third & 0x3f];
 	}
 
 	@Override
@@ -161,4 +183,12 @@ public class Base64Encoder implements Transcoder<ByteBuffer> {
 		this.bytesPerLine = bytesPerLine;
 	}
 
+	public boolean isUseBase64Url() {
+		return useBase64Url;
+	}
+
+	public void setUseBase64Url(boolean useBase64UrlLocally) {
+		this.useBase64Url = useBase64UrlLocally;
+	}
+	
 }
