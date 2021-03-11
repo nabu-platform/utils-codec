@@ -103,22 +103,40 @@ public class Base64Encoder implements Transcoder<ByteBuffer> {
 	}
 	
 	private void write(WritableContainer<ByteBuffer> out) throws IOException {
-		if (bytesPerLine > 0 && byteCount + 4 > bytesPerLine) {
+		// by default we always write 4
+		int amount = 4;
+		// for base64url however, we don't have to have a multiple of 4
+		// because this was added later, it is easiest to enforce this at this point
+		if (useBase64Url) {
+			// check if we have a "=", it does not belong in the list of valid characters so it can only be used as an appending thing
+			for (int i = 0; i < encoded.length; i++) {
+				if (encoded[i] == '=') {
+					// if we have nothing of interest, just skip alltogether
+					if (i == 0) {
+						return;
+					}
+					// i is 0-based but we want the position _before_ the equals, suppose we find it at position i == 1, we have length of 1
+					amount = i;
+					break;
+				}
+			}
+		}
+		if (bytesPerLine > 0 && byteCount + amount > bytesPerLine) {
 			int breakPoint = bytesPerLine - byteCount;
 			System.arraycopy(encoded, 0, encodedWithLineBreak, 0, breakPoint);
 			encodedWithLineBreak[breakPoint] = '\r';
 			encodedWithLineBreak[breakPoint + 1] = '\n';
-			System.arraycopy(encoded, breakPoint, encodedWithLineBreak, breakPoint + 2, 4 - breakPoint);
-			int written = (int) out.write(IOUtils.wrap(encodedWithLineBreak, 0, 6, true));
-			if (written < 6)
-				outputBuffer.write(encodedWithLineBreak, written, 6 - written);
-			byteCount = 4 - breakPoint;
+			System.arraycopy(encoded, breakPoint, encodedWithLineBreak, breakPoint + 2, amount - breakPoint);
+			int written = (int) out.write(IOUtils.wrap(encodedWithLineBreak, 0, amount + 2, true));
+			if (written < amount + 2)
+				outputBuffer.write(encodedWithLineBreak, written, (amount + 2) - written);
+			byteCount = amount - breakPoint;
 		}
 		else {
-			int written = (int) out.write(IOUtils.wrap(encoded, 0, 4, true));
-			if (written < 4)
-				outputBuffer.write(encoded, written, 4 - written);
-			byteCount += 4;
+			int written = (int) out.write(IOUtils.wrap(encoded, 0, amount, true));
+			if (written < amount)
+				outputBuffer.write(encoded, written, amount - written);
+			byteCount += amount;
 		}
 	}
 	
@@ -159,7 +177,7 @@ public class Base64Encoder implements Transcoder<ByteBuffer> {
 	}
 
 	@Override
-	public void flush(WritableContainer<ByteBuffer> out) throws IOException {
+	public void flush(final WritableContainer<ByteBuffer> out) throws IOException {
 		// write remaining in outputbuffer (if any)
 		IOUtils.copyBytes(outputBuffer, out);
 		if (outputBuffer.remainingData() > 0)

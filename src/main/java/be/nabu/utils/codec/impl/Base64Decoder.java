@@ -12,10 +12,18 @@ import be.nabu.utils.io.buffers.bytes.DynamicByteBuffer;
 
 public class Base64Decoder implements Transcoder<ByteBuffer> {
 
+	private boolean useBase64Url = false;
+	
 	static final byte [] codes = new byte [256]; static {
 		Arrays.fill(codes, (byte) -1);
 		for (int i = 0; i < Base64Encoder.codes.length; i++)
 			codes[Base64Encoder.codes[i]] = (byte) i;
+	}
+	
+	static final byte [] urlcodes = new byte [256]; static {
+		Arrays.fill(urlcodes, (byte) -1);
+		for (int i = 0; i < Base64Encoder.urlcodes.length; i++)
+			urlcodes[Base64Encoder.urlcodes[i]] = (byte) i;
 	}
 	
 	private DynamicByteBuffer outputBuffer = new DynamicByteBuffer();
@@ -34,11 +42,11 @@ public class Base64Decoder implements Transcoder<ByteBuffer> {
 		if (buffer[2] == '=')
 			offset--;
 		switch(offset) {
-			case 4: buffer[3] = codes[buffer[3] & 0xff];
-			case 3: buffer[2] = codes[buffer[2] & 0xff];
+			case 4: buffer[3] = useBase64Url ? urlcodes[buffer[3] & 0xff] : codes[buffer[3] & 0xff];
+			case 3: buffer[2] = useBase64Url ? urlcodes[buffer[2] & 0xff] : codes[buffer[2] & 0xff];
 			case 2: 
-				buffer[1] = codes[buffer[1] & 0xff];
-				buffer[0] = codes[buffer[0] & 0xff];
+				buffer[1] = useBase64Url ? urlcodes[buffer[1] & 0xff] : codes[buffer[1] & 0xff];
+				buffer[0] = useBase64Url ? urlcodes[buffer[0] & 0xff] : codes[buffer[0] & 0xff];
 		}
 		switch(offset) {
 			case 4: decoded[2] = decodeThird();
@@ -82,12 +90,29 @@ public class Base64Decoder implements Transcoder<ByteBuffer> {
 
 	@Override
 	public void flush(WritableContainer<ByteBuffer> out) throws IOException {
+		// if we are using base64url, the entire thing might not be finished yet because the trailing "=" are optional
+		if (useBase64Url && offset > 0) {
+			StringBuilder finish = new StringBuilder();
+			for (int i = 0; i < offset; i++) {
+				finish.append("=");
+			}
+			transcode(IOUtils.wrap(finish.toString().getBytes("ASCII"), true), out);
+			offset = 0;
+		}
 		// the input should've been padded
 		if (offset != 0)
 			throw new IOException("Not enough bytes in the input to finish the decoding, missing " + (4 - offset) + " byte(s)");
 		IOUtils.copyBytes(outputBuffer, out);
 		if (outputBuffer.remainingData() > 0)
 			throw new IOException("Not enough space in the target to finish the decoding");
+	}
+
+	public boolean isUseBase64Url() {
+		return useBase64Url;
+	}
+
+	public void setUseBase64Url(boolean useBase64Url) {
+		this.useBase64Url = useBase64Url;
 	}
 
 }
